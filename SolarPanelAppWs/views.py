@@ -76,7 +76,7 @@ def getParts():
     except mysql.connector.Error as err:
         return []
 
-@app.route("/updatePrice/", methods=["POST"])
+@app.route("/updatePrice", methods=["POST"])
 def updatePrice():
     try:
         name = request.form.get("name")
