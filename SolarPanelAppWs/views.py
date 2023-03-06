@@ -114,7 +114,7 @@ def newPart():
     except mysql.connector.Error as err:
         return {"responseCode" : 500}
 
-@app.route("/getCustomerById/<id>")
+@app.route("/getCustomerById/<id>", methods=["GET"])
 def getCustomerById(id):
     try:
         dbconnection = databaseloader()
@@ -131,7 +131,7 @@ def getCustomerById(id):
     except mysql.connector.Error as err:
         return {"customerId" : id, "name" : "", "address" : "", "taxNumber" : "", "company" : "", "phone" : "", "email" : "", "errorCode" : 500}
 
-@app.route("/getPartById/<id>")
+@app.route("/getPartById/<id>", methods=["GET"])
 def getPartById(id):
     try:
         dbconnection = databaseloader()
@@ -148,7 +148,7 @@ def getPartById(id):
     except mysql.connector.Error as err:
         return {"partId" : id, "name" : "", "unitPrice" : 0, "sum" : 0, "maxPerStorage" : 0, "errorCode" : 500}
 
-@app.route("/getRoleById/<id>")
+@app.route("/getRoleById/<id>", methods=["GET"])
 def getRoleById(id):
     try:
         dbconnection = databaseloader()
@@ -164,3 +164,68 @@ def getRoleById(id):
             return newRole.serialize()
     except mysql.connector.Error as err:
         return {"roleId" : id, "roleName" : "", "errorCode" : 500}
+
+
+@app.route("/updateMaxPerStorage",  methods=["POST"])
+def updateMaxPerStorage():
+    try:
+        partName = request.form.get("partName")
+        newMax = request.form.get("newMax")
+        dbconnection = databaseloader()
+        dbconnection.connect()
+        mydb = dbconnection.db
+        cursor = mydb.cursor()
+        cursor.execute("UPDATE parts SET MaxPerStorage = " + str(newMax) + " WHERE PartName = '" + partName + "'")
+        mydb.commit()
+        return {"responseCode" : 0}
+    except mysql.connector.Error as err:
+        return {"responseCode" : 500}
+
+@app.route("/newProject",  methods=["POST"])
+@app.route("/insertProject",  methods=["POST"])
+def insertProject():
+    try:
+        location = request.form.get("location")
+        description = request.form.get("description")
+        currentphase = "New"
+        totalprice = request.form.get("totalprice") #not final totalprice, but initial price of work.
+        requiredhours = request.form.get("requiredhours")
+        #Customer identity:
+        taxnumber = request.form.get("taxNumber")
+        #User identity:
+        userId = request.form.get("userId")
+        dbconnection = databaseloader()
+        dbconnection.connect()
+        mydb = dbconnection.db
+        cursor = mydb.cursor()
+        cursor.execute("SELECT CustomerId FROM customers WHERE TaxNumber = '" + taxnumber + "'")
+        myresult = cursor.fetchone()
+        if(myresult is None):
+           return {"responseCode" : 500}
+        else:
+            customerid = myresult[0]
+            cursor.execute("INSERT INTO projects (UserId, CustomerId, Location, Description, CurrentPhase, TotalPrice, RequiredHours) VALUES ( " + str(userId) + ", " + str(customerid) + ", '" + location + "', '" + description + "', '" + currentphase + "', " + totalprice + ", " + requiredhours + " )")
+            mydb.commit()
+            return {"responseCode" : 0}
+    except mysql.connector.Error as err:
+       return {"responseCode" : 500, "Msg" : err.msg}
+
+@app.route("/newCustomer",  methods=["POST"])
+@app.route("/insertCustomer",  methods=["POST"])
+def insertCustomer():
+    try:
+        name = request.form.get("name")
+        address = request.form.get("address")
+        taxnumber = request.form.get("taxNumber")
+        company = request.form.get("company")
+        phone = request.form.get("phone")
+        email = request.form.get("email")
+        dbconnection = databaseloader()
+        dbconnection.connect()
+        mydb = dbconnection.db
+        cursor = mydb.cursor()
+        cursor.execute("INSERT INTO customers (CustomerName, Address, TaxNumber, Company, Phone, Email) VALUES ( '" + name + "', '" + address + "', '" + taxnumber + "', '" + company + "', '" + phone + "', '" + email + "' )")
+        mydb.commit()
+        return {"responseCode" : 0}
+    except mysql.connector.Error as err:
+       return {"responseCode" : 500}
