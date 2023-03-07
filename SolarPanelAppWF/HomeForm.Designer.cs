@@ -29,7 +29,7 @@ namespace SolarPanelAppWF
         /// </summary>
         private void InitializeComponent()
         {
-            this.Panel_content = new System.Windows.Forms.Panel();
+            this.panelContent = new System.Windows.Forms.Panel();
             this.menuStrip1 = new System.Windows.Forms.MenuStrip();
             this.újAlkatrészFelvételeToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.alkatrészÁránakMódosításaToolStripMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -37,12 +37,12 @@ namespace SolarPanelAppWF
             this.menuStrip1.SuspendLayout();
             this.SuspendLayout();
             // 
-            // Panel_content
+            // panelContent
             // 
-            this.Panel_content.Location = new System.Drawing.Point(-1, 27);
-            this.Panel_content.Name = "Panel_content";
-            this.Panel_content.Size = new System.Drawing.Size(806, 430);
-            this.Panel_content.TabIndex = 2;
+            this.panelContent.Location = new System.Drawing.Point(-1, 27);
+            this.panelContent.Name = "panelContent";
+            this.panelContent.Size = new System.Drawing.Size(806, 430);
+            this.panelContent.TabIndex = 2;
             // 
             // menuStrip1
             // 
@@ -82,11 +82,11 @@ namespace SolarPanelAppWF
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(800, 450);
-            this.Controls.Add(this.Panel_content);
+            this.Controls.Add(this.panelContent);
             this.Controls.Add(this.menuStrip1);
             this.MainMenuStrip = this.menuStrip1;
             this.Name = "HomeForm";
-            this.Text = "HomeForm";
+            this.Text = "Solar Panel System";
             this.FormClosed += new System.Windows.Forms.FormClosedEventHandler(this.HomeForm_FormClosed);
             this.Load += new System.EventHandler(this.HomeForm_Load);
             this.menuStrip1.ResumeLayout(false);
@@ -97,7 +97,7 @@ namespace SolarPanelAppWF
         }
 
         #endregion
-        private System.Windows.Forms.Panel Panel_content;
+        private System.Windows.Forms.Panel panelContent;
         private System.Windows.Forms.MenuStrip menuStrip1;
         private System.Windows.Forms.ToolStripMenuItem újAlkatrészFelvételeToolStripMenuItem;
         private System.Windows.Forms.ToolStripMenuItem alkatrészÁránakMódosításaToolStripMenuItem;

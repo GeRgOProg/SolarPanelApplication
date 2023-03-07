@@ -74,7 +74,7 @@ namespace SolarPanelAppWF
                 int responsecode = responsetask.Result;
                 if (responsecode == 0)
                 {
-                    MessageBox.Show("Successfull modification!");
+                    MessageBox.Show("Successful modification!");
                     
                     updatePartList();
                 }
@@ -87,6 +87,13 @@ namespace SolarPanelAppWF
             {
                 MessageBox.Show("Not sufficient formatting!");
             }
+        }
+
+        private void BT_homepage_Click(object sender, EventArgs e)
+        {
+            HomeForm homeform = new HomeForm();
+            this.Hide();
+            homeform.Show();
         }
     }
 }

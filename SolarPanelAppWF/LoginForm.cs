@@ -29,7 +29,7 @@ namespace SolarPanelAppWF
             User user = Controller.currentUser;
             if (user.roleName == "Raktárvezető" && response=="OK")
             {
-                MessageBox.Show("Successfull login as " + user.roleName + "!");
+                MessageBox.Show("Successful login as " + user.roleName + "!");
                 this.Hide();
                 HomeForm homeform=new HomeForm();
                 homeform.Show();

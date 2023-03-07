@@ -7,6 +7,7 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
+using System.Windows.Forms;
 
 namespace SolarPanelAppWF
 {
@@ -14,7 +15,9 @@ namespace SolarPanelAppWF
     {
         public static User currentUser { get; set; }
 
-        public static string APIURL = "http://localhost:59672/";
+        private static string port = "51488";
+        public static string APIURL = "http://localhost:" + port + "/";
+        
 
         public static Task<int> InsertPart(string name, double unitprice, int sum, int maxperstorag)
         {
@@ -127,5 +130,8 @@ namespace SolarPanelAppWF
 
             });
         }
+
+
+        
     }
 }
