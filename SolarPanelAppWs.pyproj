@@ -34,7 +34,13 @@
     <Compile Include="SolarPanelAppWs\Model\databaseloader.py">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="SolarPanelAppWs\Model\log.py">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="SolarPanelAppWs\Model\part.py">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="SolarPanelAppWs\Model\project.py">
       <SubType>Code</SubType>
     </Compile>
     <Compile Include="SolarPanelAppWs\Model\role.py">

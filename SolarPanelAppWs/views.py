@@ -18,6 +18,8 @@ from SolarPanelAppWs.Model.user import user
 from SolarPanelAppWs.Model.part import part
 from SolarPanelAppWs.Model.customer import customer
 from SolarPanelAppWs.Model.role import role
+from SolarPanelAppWs.Model.project import project
+from SolarPanelAppWs.Model.log import log
 
 # Home page
 @app.route('/')
@@ -127,6 +129,8 @@ def getCustomerById(id):
             return {"customerId" : id, "name" : "", "address" : "", "taxNumber" : "", "company" : "", "phone" : "", "email" : "", "errorCode" : 500}
         else:
             newCustomer = customer(myresult[0], myresult[1], myresult[2], myresult[3], myresult[4], myresult[5], myresult[6])
+            cursor.close()
+            dbconnection.disconnect()
             return newCustomer.serialize()
     except mysql.connector.Error as err:
         return {"customerId" : id, "name" : "", "address" : "", "taxNumber" : "", "company" : "", "phone" : "", "email" : "", "errorCode" : 500}
@@ -144,6 +148,8 @@ def getPartById(id):
             return {"partId" : id, "name" : "", "unitPrice" : 0, "sum" : 0, "maxPerStorage" : 0, "errorCode" : 500}
         else:
             newPart = part(myresult[0], myresult[1], myresult[2], myresult[3], myresult[4])
+            cursor.close()
+            dbconnection.disconnect()
             return newPart.serialize()
     except mysql.connector.Error as err:
         return {"partId" : id, "name" : "", "unitPrice" : 0, "sum" : 0, "maxPerStorage" : 0, "errorCode" : 500}
@@ -161,6 +167,8 @@ def getRoleById(id):
             return {"roleId" : id, "roleName" : "", "errorCode" : 500}
         else:
             newRole = role(myresult[0], myresult[1])
+            cursor.close()
+            dbconnection.disconnect()
             return newRole.serialize()
     except mysql.connector.Error as err:
         return {"roleId" : id, "roleName" : "", "errorCode" : 500}
@@ -177,6 +185,8 @@ def updateMaxPerStorage():
         cursor = mydb.cursor()
         cursor.execute("UPDATE parts SET MaxPerStorage = " + str(newMax) + " WHERE PartName = '" + partName + "'")
         mydb.commit()
+        cursor.close()
+        dbconnection.disconnect()
         return {"responseCode" : 0}
     except mysql.connector.Error as err:
         return {"responseCode" : 500}
@@ -204,8 +214,15 @@ def insertProject():
            return {"responseCode" : 500}
         else:
             customerid = myresult[0]
-            cursor.execute("INSERT INTO projects (UserId, CustomerId, Location, Description, CurrentPhase, TotalPrice, RequiredHours) VALUES ( " + str(userId) + ", " + str(customerid) + ", '" + location + "', '" + description + "', '" + currentphase + "', " + totalprice + ", " + requiredhours + " )")
+            cursor.execute("INSERT INTO projects (UserId, CustomerId, Location, Description, CurrentPhase, TotalPrice, RequiredHours) VALUES ( " + str(userId) + ", " + str(customerid) + ", '" + location + "', '" + description + "', '" + currentphase + "', " + str(totalprice) + ", " + str(requiredhours) + " )")
             mydb.commit()
+            cursor.execute("SELECT ProjectId FROM projects WHERE UserId = " + str(userId) + " AND CustomerId = " + str(customerid) + " AND Location = '" + location + "' AND Description = '" + description + "' AND CurrentPhase = '" + currentphase + "' AND TotalPrice = " + str(totalprice) + " AND RequiredHours = " + str(requiredhours))
+            myresult = cursor.fetchone()
+            projectId = myresult[0]
+            cursor.execute("INSERT INTO log (ProjectId, Phase, Timestamp) VALUES (" + str(projectId) + ", '" + currentphase + "', CURRENT_TIMESTAMP())")
+            mydb.commit()
+            cursor.close()
+            dbconnection.disconnect()
             return {"responseCode" : 0}
     except mysql.connector.Error as err:
        return {"responseCode" : 500, "Msg" : err.msg}
@@ -226,6 +243,88 @@ def insertCustomer():
         cursor = mydb.cursor()
         cursor.execute("INSERT INTO customers (CustomerName, Address, TaxNumber, Company, Phone, Email) VALUES ( '" + name + "', '" + address + "', '" + taxnumber + "', '" + company + "', '" + phone + "', '" + email + "' )")
         mydb.commit()
+        cursor.close()
+        dbconnection.disconnect()
         return {"responseCode" : 0}
     except mysql.connector.Error as err:
        return {"responseCode" : 500}
+
+@app.route("/getPartLocation/<partId>", methods=["GET"])
+def getPartLocation(partId):
+    locationList = []
+    try:
+        dbconnection = databaseloader()
+        dbconnection.connect()
+        mydb = dbconnection.db
+        cursor = mydb.cursor()
+        cursor.execute("SELECT parts.PartName, parts.UnitPrice, CONCAT(line.LineId, '-', storage.ColumnId, '-', storage_parts.StorageId) AS 'Location', OnStock-Reserved AS 'OnStockActual'  FROM storage_parts JOIN parts ON storage_parts.PartId = parts.PartId  JOIN storage ON storage.StorageId = storage_parts.StorageId JOIN columns ON storage.ColumnId = columns.ColumnId JOIN line ON line.LineId = columns.ColumnId WHERE storage_parts.PartId = " + partId)
+        myresult = cursor.fetchall()
+        if(myresult is None):
+            return {"locationList" : [] , "errorCode" : 500}
+        else:
+            for x in myresult:
+                locationList.append({"partName" : x[0], "unitPrice" : x[1], "location" : x[2], "actualOnStock" : x[3]})
+        cursor.close()
+        dbconnection.disconnect()    
+        return {"locationList" : locationList, "errorCode" : 0}
+    except mysql.connector.Error as err:
+         return {"locationList" : [] , "errorCode" : 500}
+
+@app.route("/getAllPartLocation", methods=["GET"])
+def getAllPartLocation():
+    locationList = []
+    try:
+        dbconnection = databaseloader()
+        dbconnection.connect()
+        mydb = dbconnection.db
+        cursor = mydb.cursor()
+        cursor.execute("SELECT parts.PartName, parts.UnitPrice, CONCAT(line.LineId, '-', storage.ColumnId, '-', storage_parts.StorageId) AS 'Location', OnStock-Reserved AS 'OnStockActual'  FROM storage_parts JOIN parts ON storage_parts.PartId = parts.PartId  JOIN storage ON storage.StorageId = storage_parts.StorageId JOIN columns ON storage.ColumnId = columns.ColumnId JOIN line ON line.LineId = columns.ColumnId ORDER BY storage_parts.PartId")
+        myresult = cursor.fetchall()
+        if(myresult is None):
+            return {"locationList" : [] , "errorCode" : 500}
+        else:
+            for x in myresult:
+                locationList.append({"partName" : x[0], "unitPrice" : x[1], "location" : x[2], "actualOnStock" : x[3]})
+        cursor.close()
+        dbconnection.disconnect()    
+        return {"locationList" : locationList, "errorCode" : 0}
+    except mysql.connector.Error as err:
+         return {"locationList" : [] , "errorCode" : 500}
+
+@app.route("/getProjects/<userId>", methods=["GET"])
+def getProjects(userId):
+    try:
+        projects = []
+        dbconnection = databaseloader()
+        dbconnection.connect()
+        mydb = dbconnection.db
+        cursor = mydb.cursor()
+        cursor.execute("SELECT * FROM projects WHERE userId = " + userId)
+        myresult = cursor.fetchall()
+        if(myresult is None):
+            return []
+        else:
+            for x in myresult:
+                projects.append(project(x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7]).serialize())
+            return projects
+    except mysql.connector.Error as err:
+        return []
+
+@app.route("/getLog/<projectId>", methods=["GET"])
+def getLog(projectId):
+    try:
+        logs = []
+        dbconnection = databaseloader()
+        dbconnection.connect()
+        mydb = dbconnection.db
+        cursor = mydb.cursor()
+        cursor.execute("SELECT * FROM log WHERE projectId = " + projectId)
+        myresult = cursor.fetchall()
+        if(myresult is None):
+            return []
+        else:
+            for x in myresult:
+                logs.append(log(x[0], x[1], x[2], x[3]).serialize())
+            return logs
+    except mysql.connector.Error as err:
+        return []
