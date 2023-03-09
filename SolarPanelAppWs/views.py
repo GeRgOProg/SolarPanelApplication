@@ -10,6 +10,7 @@ Filotás Patrik
 """
 
 import mysql.connector
+import json
 from datetime import datetime
 from flask import render_template, jsonify, request
 from SolarPanelAppWs import app
@@ -328,3 +329,99 @@ def getLog(projectId):
             return logs
     except mysql.connector.Error as err:
         return []
+
+
+@app.route("/insertShipment", methods=["POST"])
+@app.route("/newShipment", methods=["POST"])
+def insertShipment():
+    try:
+        identity = request.form.get("identity")
+        shippingdate = request.form.get("shippingDate")
+        driver = request.form.get("driver")
+        company = request.form.get("company")
+        totalweight = request.form.get("totalWeight")
+        partData = json.loads(request.form.get("partData")) #partId, quantity
+        dbconnection = databaseloader()
+        dbconnection.connect()
+        mydb = dbconnection.db
+        cursor = mydb.cursor()
+        cursor.execute("INSERT INTO shipments (Identity, ShippingDate, Driver, Company, TotalWeight) VALUES ('" + str(identity) + "', '" + str(shippingdate) + "', '" + driver + "', '" + company + "', " + str(totalweight) + " )")
+        mydb.commit()
+        cursor.execute("SELECT ShipmentId FROM shipments WHERE Identity = '" + str(identity) + "'")
+        myresult = cursor.fetchone()
+        shipmentId = myresult[0]
+        for data in partData:
+            cursor.execute("INSERT INTO shipments_parts (ShipmentId, PartId, Quantity) VALUES ( " + str(shipmentId) + ", " + str(data["partId"]) + ", " + str(data["quantity"]) + " )")
+            cursor.execute("UPDATE parts SET sum = sum + " + str(data["quantity"]) + " WHERE partId = " + str(data["partId"]))
+        mydb.commit()
+        return {"responseCode" : 0}
+    except mysql.connector.Error as err:
+       return {"responseCode" : 500}
+
+@app.route("/updateStorageCapacity", methods=["POST"])
+@app.route("/updateStorageWeightCapacity", methods=["POST"])
+def updateStorageCapacity():
+    try:
+        line = request.form.get("line")
+        column = request.form.get("column")
+        storage = request.form.get("storage")
+        maxweightcapacity = request.form.get("maxWeightCapacity")
+        dbconnection = databaseloader()
+        dbconnection.connect()
+        mydb = dbconnection.db
+        cursor = mydb.cursor()
+        cursor.execute("SELECT line.LineId, columns.ColumnId, storage.StorageId FROM storage JOIN columns ON storage.ColumnId = columns.ColumnId JOIN line ON line.LineId = columns.ColumnId WHERE line.LineId = " + str(line) + " AND columns.ColumnId = " + str(column) + " AND storage.StorageId = " + str(storage))
+        myresult = cursor.fetchone()
+        if(myresult is None):
+            return {"responseCode" : 500}
+        else:
+            cursor.execute("UPDATE storage JOIN columns ON storage.ColumnId = columns.ColumnId JOIN line ON line.LineId = columns.ColumnId SET MaxWeightCapacity = " + str(maxweightcapacity) + " WHERE line.LineId = " + str(line) + " AND columns.ColumnId = " + str(column) + " AND storage.StorageId = " + str(storage))
+            mydb.commit()
+            return {"responseCode" : 0}
+    except mysql.connector.Error as err:
+       return {"responseCode" : 500}
+
+@app.route("/assignParts", methods=["POST"])
+def assignPart():
+       try:
+           projectId = request.form.get("projectId")
+           partData = json.loads(request.form.get("partData")) #partId, quantity
+           dbconnection = databaseloader()
+           dbconnection.connect()
+           mydb = dbconnection.db
+           cursor = mydb.cursor()
+           #Getting sum of each part, calculate new sum (sum - required, or get all of sum and reserve rest)
+           for x in partData:
+             cursor.execute("SELECT Sum, UnitPrice FROM parts WHERE partId = " + str(x["partId"]))
+             myresult = cursor.fetchone()
+             sum = myresult[0]
+             unitPrice = myresult[1]
+             cursor.execute("SELECT * FROM projects_parts WHERE projectId = " + str(projectId) + " AND partId = " + str(x["partId"]))
+             myresult = cursor.fetchone()
+             if(myresult is None):
+                if(sum < x["quantity"]):
+                    reserved =x["quantity"] - sum
+                    cursor.execute("INSERT INTO projects_parts (ProjectId, PartId, Reserved, Required) VALUES ( " + str(projectId) + ", " + str(x["partId"]) + ", " + str(reserved) + ", " + str(sum) + " )")
+                    cursor.execute("UPDATE parts SET sum = 0 WHERE PartId = " + str(x["partId"]))
+                    cursor.execute("UPDATE storage_parts SET Reserved = Reserved + " + str(reserved) + " WHERE PartId = " + str(x["partId"]))
+                    cursor.execute("UPDATE projects SET TotalPrice = TotalPrice + " + str(x["quantity"] * unitPrice) + " WHERE projectId = " + str(projectId))
+                else:
+                    cursor.execute("INSERT INTO projects_parts (ProjectId, PartId, Reserved, Required) VALUES ( " + str(projectId) + ", " + str(x["partId"]) + ", 0, " + str(x["quantity"]) + " )")
+                    cursor.execute("UPDATE parts SET sum = sum - " + str(x["quantity"]) + " WHERE PartId = " + str(x["partId"]))
+                    cursor.execute("UPDATE projects SET TotalPrice = TotalPrice + " + str(x["quantity"] * unitPrice) + " WHERE projectId = " + str(projectId))
+             else:
+                 if(sum < x["quantity"]):
+                     reserved =x["quantity"] - sum
+                     cursor.execute("UPDATE projects_parts SET Reserved = Reserved + " + str(reserved) + ", Required = Required + " + str(sum) + " WHERE ProjectId = " + str(projectId) + " AND partId = " + str(x["partId"]))
+                     cursor.execute("UPDATE parts SET sum = 0 WHERE PartId = " + str(x["partId"]))
+                     cursor.execute("UPDATE storage_parts SET Reserved = Reserved + " + str(reserved) + " WHERE PartId = " + str(x["partId"]))
+                     cursor.execute("UPDATE projects SET TotalPrice = TotalPrice + " + str(x["quantity"] * unitPrice) + " WHERE projectId = " + str(projectId))
+                 else:
+                     cursor.execute("UPDATE projects_parts SET Required = Required + " + str(x["quantity"]) + " WHERE projectId = " + str(projectId) + " AND partId = " + str(x["partId"]))
+                     cursor.execute("UPDATE parts SET sum = sum - " + str(x["quantity"]) + " WHERE PartId = " + str(x["partId"]))
+                     cursor.execute("UPDATE projects SET TotalPrice = TotalPrice + " + str(x["quantity"] * unitPrice) + " WHERE projectId = " + str(projectId))
+             mydb.commit()
+           return {"errorCode" : 0}
+       except mysql.connector.Error as err:
+           return {"responseCode" : 500}
+  
