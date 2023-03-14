@@ -258,7 +258,7 @@ def getPartLocation(partId):
         dbconnection.connect()
         mydb = dbconnection.db
         cursor = mydb.cursor()
-        cursor.execute("SELECT parts.PartName, parts.UnitPrice, CONCAT(line.LineId, '-', storage.ColumnId, '-', storage_parts.StorageId) AS 'Location', OnStock-Reserved AS 'OnStockActual'  FROM storage_parts JOIN parts ON storage_parts.PartId = parts.PartId  JOIN storage ON storage.StorageId = storage_parts.StorageId JOIN columns ON storage.ColumnId = columns.ColumnId JOIN line ON line.LineId = columns.ColumnId WHERE storage_parts.PartId = " + partId)
+        cursor.execute("SELECT DISTINCT parts.PartName, parts.UnitPrice, CONCAT(line.LineId, '-', storage.ColumnId, '-', storage.level) AS 'Location', OnStock-Reserved AS 'OnStockActual'  FROM storage_parts JOIN parts ON storage_parts.PartId = parts.PartId  JOIN storage ON storage.StorageId = storage_parts.StorageId JOIN columns ON storage.ColumnId = columns.ColumnId JOIN line ON line.LineId = columns.ColumnId WHERE storage_parts.PartId = " + partId)
         myresult = cursor.fetchall()
         if(myresult is None):
             return {"locationList" : [] , "errorCode" : 500}
@@ -279,7 +279,7 @@ def getAllPartLocation():
         dbconnection.connect()
         mydb = dbconnection.db
         cursor = mydb.cursor()
-        cursor.execute("SELECT parts.PartName, parts.UnitPrice, CONCAT(line.LineId, '-', storage.ColumnId, '-', storage_parts.StorageId) AS 'Location', OnStock-Reserved AS 'OnStockActual'  FROM storage_parts JOIN parts ON storage_parts.PartId = parts.PartId  JOIN storage ON storage.StorageId = storage_parts.StorageId JOIN columns ON storage.ColumnId = columns.ColumnId JOIN line ON line.LineId = columns.ColumnId ORDER BY storage_parts.PartId")
+        cursor.execute("SELECT DISTINCT parts.PartName, parts.UnitPrice, CONCAT(line.LineId, '-', storage.ColumnId, '-', storage.level) AS 'Location', OnStock-Reserved AS 'OnStockActual'  FROM storage_parts JOIN parts ON storage_parts.PartId = parts.PartId  JOIN storage ON storage.StorageId = storage_parts.StorageId JOIN columns ON storage.ColumnId = columns.ColumnId JOIN line ON line.LineId = columns.ColumnId ORDER BY parts.partName")
         myresult = cursor.fetchall()
         if(myresult is None):
             return {"locationList" : [] , "errorCode" : 500}
@@ -307,6 +307,8 @@ def getProjects(userId):
         else:
             for x in myresult:
                 projects.append(project(x[0], x[1], x[2], x[3], x[4], x[5], x[6], x[7]).serialize())
+            cursor.close()
+            dbconnection.disconnect()
             return projects
     except mysql.connector.Error as err:
         return []
@@ -326,6 +328,8 @@ def getLog(projectId):
         else:
             for x in myresult:
                 logs.append(log(x[0], x[1], x[2], x[3]).serialize())
+            cursor.close()
+            dbconnection.disconnect()
             return logs
     except mysql.connector.Error as err:
         return []
@@ -340,11 +344,11 @@ def insertShipment():
         driver = request.form.get("driver")
         company = request.form.get("company")
         totalweight = request.form.get("totalWeight")
-        partData = json.loads(request.form.get("partData")) #partId, quantity
+        partData = json.loads(request.form.get("partData")) #partId, quantity, line, column, storage
         dbconnection = databaseloader()
         dbconnection.connect()
         mydb = dbconnection.db
-        cursor = mydb.cursor()
+        cursor = mydb.cursor(buffered=True)
         cursor.execute("INSERT INTO shipments (Identity, ShippingDate, Driver, Company, TotalWeight) VALUES ('" + str(identity) + "', '" + str(shippingdate) + "', '" + driver + "', '" + company + "', " + str(totalweight) + " )")
         mydb.commit()
         cursor.execute("SELECT ShipmentId FROM shipments WHERE Identity = '" + str(identity) + "'")
@@ -353,10 +357,40 @@ def insertShipment():
         for data in partData:
             cursor.execute("INSERT INTO shipments_parts (ShipmentId, PartId, Quantity) VALUES ( " + str(shipmentId) + ", " + str(data["partId"]) + ", " + str(data["quantity"]) + " )")
             cursor.execute("UPDATE parts SET sum = sum + " + str(data["quantity"]) + " WHERE partId = " + str(data["partId"]))
+            cursor.execute("SELECT storageId FROM storage JOIN columns ON storage.ColumnId = columns.ColumnId JOIN line ON line.LineId = columns.LineId WHERE line.LineId = " + str(data["line"]) + " AND columns.ColumnId = " + str(data["column"]) + " AND storage.level = " + str(data["storage"]))
+            myresult = cursor.fetchone()
+            storageId = myresult[0]
+            cursor.execute("SELECT PartId FROM storage_parts WHERE StorageId = " + str(storageId))
+            myresult = cursor.fetchone()
+            if(myresult is None):
+              cursor.execute("INSERT INTO storage_parts (StorageId, PartId, OnStock, Reserved) VALUES ( " + str(storageId) + ", " + str(data["partId"]) + ", " + str(data["quantity"]) + ", 0 )")
+            elif(myresult[0] == data["partId"]):
+              cursor.execute("SELECT parts.MaxPerStorage, storage_parts.OnStock FROM parts JOIN storage_parts ON storage_parts.PartId = parts.PartId WHERE parts.partId = " + str(data["partId"]) + "")
+              myresult = cursor.fetchone()
+              if(myresult[0] > myresult[1]):
+                 cursor.execute("UPDATE storage_parts SET OnStock = Onstock + " + str(data["quantity"]) + " WHERE StorageId = " + str(storageId))
+              else:
+                  cursor.execute("DELETE FROM shipments WHERE identity = '" + identity + "'")
+                  mydb.commit()
+                  cursor.close()
+                  dbconnection.disconnect()
+                  return {"responseCode" : 417}
+            else:
+                cursor.execute("DELETE FROM shipments WHERE identity = '" + identity + "'")
+                mydb.commit()
+                cursor.close()
+                dbconnection.disconnect()
+                return {"responseCode" : 417}
         mydb.commit()
+        cursor.close()
+        dbconnection.disconnect()
         return {"responseCode" : 0}
     except mysql.connector.Error as err:
-       return {"responseCode" : 500}
+       cursor.execute("DELETE FROM shipments WHERE identity = '" + identity + "'")
+       mydb.commit()
+       cursor.close()
+       dbconnection.disconnect()
+       return {"responseCode" : 500, "msg" : err.msg}
 
 @app.route("/updateStorageCapacity", methods=["POST"])
 @app.route("/updateStorageWeightCapacity", methods=["POST"])
@@ -370,13 +404,15 @@ def updateStorageCapacity():
         dbconnection.connect()
         mydb = dbconnection.db
         cursor = mydb.cursor()
-        cursor.execute("SELECT line.LineId, columns.ColumnId, storage.StorageId FROM storage JOIN columns ON storage.ColumnId = columns.ColumnId JOIN line ON line.LineId = columns.ColumnId WHERE line.LineId = " + str(line) + " AND columns.ColumnId = " + str(column) + " AND storage.StorageId = " + str(storage))
+        cursor.execute("SELECT line.LineId, columns.ColumnId, storage.level FROM storage JOIN columns ON storage.ColumnId = columns.ColumnId JOIN line ON line.LineId = columns.ColumnId WHERE line.LineId = " + str(line) + " AND columns.ColumnId = " + str(column) + " AND storage.level = " + str(storage))
         myresult = cursor.fetchone()
         if(myresult is None):
             return {"responseCode" : 500}
         else:
-            cursor.execute("UPDATE storage JOIN columns ON storage.ColumnId = columns.ColumnId JOIN line ON line.LineId = columns.ColumnId SET MaxWeightCapacity = " + str(maxweightcapacity) + " WHERE line.LineId = " + str(line) + " AND columns.ColumnId = " + str(column) + " AND storage.StorageId = " + str(storage))
+            cursor.execute("UPDATE storage JOIN columns ON storage.ColumnId = columns.ColumnId JOIN line ON line.LineId = columns.ColumnId SET MaxWeightCapacity = " + str(maxweightcapacity) + " WHERE line.LineId = " + str(line) + " AND columns.ColumnId = " + str(column) + " AND storage.level = " + str(storage))
             mydb.commit()
+            cursor.close()
+            dbconnection.disconnect()
             return {"responseCode" : 0}
     except mysql.connector.Error as err:
        return {"responseCode" : 500}
@@ -420,8 +456,74 @@ def assignPart():
                      cursor.execute("UPDATE projects_parts SET Required = Required + " + str(x["quantity"]) + " WHERE projectId = " + str(projectId) + " AND partId = " + str(x["partId"]))
                      cursor.execute("UPDATE parts SET sum = sum - " + str(x["quantity"]) + " WHERE PartId = " + str(x["partId"]))
                      cursor.execute("UPDATE projects SET TotalPrice = TotalPrice + " + str(x["quantity"] * unitPrice) + " WHERE projectId = " + str(projectId))
+             cursor.execute("SELECT LogId FROM log WHERE ProjectId = " + str(projectId) + " AND Phase = 'Draft'")
+             myresult = cursor.fetchone()
+             if(myresult is None):
+                 cursor.execute("INSERT INTO log (ProjectId, Phase, Timestamp) VALUES ( " + str(projectId) + ", 'Draft', CURRENT_TIMESTAMP())")
              mydb.commit()
+             cursor.close()
+             dbconnection.disconnect()
            return {"errorCode" : 0}
        except mysql.connector.Error as err:
            return {"responseCode" : 500}
   
+@app.route("/changeProjectStatus", methods=["POST"])
+@app.route("/updateProjectStatus", methods=["POST"])
+def updateProjectStatus():
+    try:
+        projectId = request.form.get("projectId")
+        status = request.form.get("status")
+        dbconnection = databaseloader()
+        dbconnection.connect()
+        mydb = dbconnection.db
+        cursor = mydb.cursor()
+        cursor.execute("SELECT Phase FROM log WHERE ProjectId = " + str(projectId) + " AND Phase = '" + status + "'")
+        myresult = cursor.fetchone()
+        if(myresult is None):
+             cursor.execute("INSERT INTO log (ProjectId, Phase, Timestamp) VALUES ( " + str(projectId) + ", '" + status + "', CURRENT_TIMESTAMP())")
+             cursor.execute("UPDATE projects SET CurrentPhase = '" + status + "' WHERE ProjectId = " + str(projectId))
+             mydb.commit()
+             cursor.close()
+             dbconnection.disconnect()
+             return {"responseCode" : 0}
+        else:
+            dbconnection.disconnect()
+            return {"responseCode" : 417}
+    except mysql.connector.Error as err:
+        return {"responseCode" : 500}
+
+@app.route("/getMissingParts/<qualifier>", methods=["GET"])
+def getMissingParts(qualifier):
+    try:
+        parts = []
+        dbconnection = databaseloader()
+        dbconnection.connect()
+        mydb = dbconnection.db
+        cursor = mydb.cursor()
+        if(qualifier.lower() == "onlyreserved"):
+            cursor.execute("SELECT PartName, Reserved FROM projects_parts JOIN parts ON parts.PartId = projects_parts.PartId WHERE Reserved > 0")
+            myresult = cursor.fetchall()
+            for x in myresult:
+                partResult = list(filter(lambda y : y["partName"] == x[0], parts))
+                if(len(partResult) == 0):
+                    parts.append({"partName" : x[0], "reserved" : x[1]})
+                else:
+                    for y in parts:
+                        if(y["partName"] == x[0]):
+                            y["reserved"] = y["reserved"] + x[1]
+        elif(qualifier.lower() == "missingandreserved"):
+            cursor.execute("SELECT PartName, Reserved FROM projects_parts JOIN parts ON parts.PartId = projects_parts.PartId WHERE Reserved > 0 OR Sum = 0")
+            myresult = cursor.fetchall()
+            for x in myresult:
+                partResult = list(filter(lambda y : y["partName"] == x[0], parts))
+                if(len(partResult) == 0):
+                    parts.append({"partName" : x[0], "reserved" : x[1]})
+                else:
+                    for y in parts:
+                        if(y["partName"] == x[0]):
+                            y["reserved"] = y["reserved"] + x[1]
+        cursor.close()
+        dbconnection.disconnect()
+        return parts
+    except mysql.connector.Error as err:
+        return []

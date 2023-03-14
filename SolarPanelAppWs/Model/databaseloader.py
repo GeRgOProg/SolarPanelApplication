@@ -5,8 +5,8 @@ class databaseloader:
     def __init__(self):
         self.config =  {
                         "host" : "sql.freedb.tech",
-                        "user" : "freedb_dbadminRendszerfejlesztes",
-                        "password" : "3vQN9!Dztsdb2?%",
+                        "user" : "freedb_csiko_dbuser",
+                        "password" : "!TbW5TuN3j@tqHy",
                         "database" : "freedb_solarcompany"
                         }
     def connect(self):
